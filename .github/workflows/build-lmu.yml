@@ -54,11 +54,14 @@ jobs:
         with:
           arch: x64
 
-      - name: Setup vcpkg (pinned to builtin-baseline in vcpkg.json)
+      # vcpkg scripts from release tag 2026.07.29: the Feb-2024 scripts at the old baseline fetch msys2
+      # packages by hard-coded URL, and msys2 has deleted those files (404). Port versions stay pinned
+      # by builtin-baseline in vcpkg.json.
+      - name: Setup vcpkg
         uses: lukka/run-vcpkg@v11
         with:
           vcpkgDirectory: ${{ runner.workspace }}/vcpkg
-          vcpkgGitCommitId: 8d3649ba34aab36914ddd897958599aa0a91b08e
+          vcpkgGitCommitId: c76c06644034521fb761a39f8f52d8e87d1103d5
 
       # run-vcpkg exports VCPKG_BINARY_SOURCES=x-gha, but the GHA cache tokens are not exposed to
       # run steps any more, so vcpkg dies with "requires ACTIONS_RUNTIME_TOKEN". Use a plain
