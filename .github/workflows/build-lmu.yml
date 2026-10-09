@@ -60,12 +60,26 @@ jobs:
           vcpkgDirectory: ${{ runner.workspace }}/vcpkg
           vcpkgGitCommitId: 8d3649ba34aab36914ddd897958599aa0a91b08e
 
+      # run-vcpkg exports VCPKG_BINARY_SOURCES=x-gha, but the GHA cache tokens are not exposed to
+      # run steps any more, so vcpkg dies with "requires ACTIONS_RUNTIME_TOKEN". Use a plain
+      # files cache instead, saved/restored with actions/cache.
+      - name: Cache vcpkg binaries
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}\vcpkg-bincache
+          key: vcpkg-bin-${{ runner.os }}-${{ hashFiles('vcpkg.json', 'cmake/ports/**') }}
+          restore-keys: vcpkg-bin-${{ runner.os }}-
+
       - name: Configure
         shell: pwsh
+        env:
+          VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}\vcpkg-bincache,readwrite
         run: cmake --preset build-relwithdebinfo-se-only
 
       - name: Build
         shell: pwsh
+        env:
+          VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}\vcpkg-bincache,readwrite
         run: cmake --build build/relwithdebinfo-se-only
 
       - name: Upload DLL
