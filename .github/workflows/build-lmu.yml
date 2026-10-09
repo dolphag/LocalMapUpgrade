@@ -1,0 +1,78 @@
+name: Build LocalMapUpgrade
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+
+jobs:
+  build:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply fix (ignore button release as place-marker click)
+        shell: pwsh
+        run: |
+          $patch = @'
+          diff --git a/source/Hooks.cpp b/source/Hooks.cpp
+          index 4f93ce7..1471025 100644
+          --- a/source/Hooks.cpp
+          +++ b/source/Hooks.cpp
+          @@ -177,7 +177,20 @@ bool ProcessButton(RE::LocalMapMenu::InputHandler* a_localMapInputHandler, RE::B
+           			{
+           				auto playerSetMarkerManager = LMU::PlayerSetMarkerManager::GetSingleton();
+           
+          -				if (playerSetMarkerManager->CanPlaceMarker())
+          +				// Act only on a fresh press. The button that picked "Map" in the pause/tween menu is
+          +				// still down when the map opens, so its RELEASE (Value() == 0) reaches this handler
+          +				// while allowPlaceMarker is still true - and was treated as a placement click, which
+          +				// opened the "What do you want to do with this marker?" prompt (or silently dropped a
+          +				// marker) right after opening the map. The vanilla world map ignores that release;
+          +				// this local-map path did not.
+          +				if (!buttonEvent->IsDown())
+          +				{
+          +					if (buttonEvent->IsUp())
+          +					{
+          +						playerSetMarkerManager->AllowPlaceMarker();
+          +					}
+          +				}
+          +				else if (playerSetMarkerManager->CanPlaceMarker())
+           				{ 
+           					float wndPointX{};
+           					float wndPointY{};
+          '@
+          Set-Content -Path fix.patch -Value $patch -Encoding utf8NoBOM
+          git apply --ignore-whitespace fix.patch
+          if ($LASTEXITCODE -ne 0) { throw "fix.patch did not apply; refusing to build an unpatched DLL" }
+          Write-Host "Patch applied"
+
+      - name: Setup MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Setup vcpkg (pinned to builtin-baseline in vcpkg.json)
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgDirectory: ${{ runner.workspace }}/vcpkg
+          vcpkgGitCommitId: 8d3649ba34aab36914ddd897958599aa0a91b08e
+
+      - name: Configure
+        shell: pwsh
+        run: cmake --preset build-relwithdebinfo-se-only
+
+      - name: Build
+        shell: pwsh
+        run: cmake --build build/relwithdebinfo-se-only
+
+      - name: Upload DLL
+        uses: actions/upload-artifact@v4
+        with:
+          name: LocalMapUpgrade
+          if-no-files-found: error
+          path: |
+            build/relwithdebinfo-se-only/LocalMapUpgrade.dll
+            build/relwithdebinfo-se-only/LocalMapUpgrade.pdb
